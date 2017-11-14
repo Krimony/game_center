@@ -331,14 +331,14 @@ def use_comd(request, profile):
             goods.save()
             return '200', '装备成功', 'none'
     else:
-        #return '205', '您已装备该道具', 'none'
-        is_replacement = req['choose']
-        if is_replacement == 'yes':
-            goods.status = '0'
-            goods.save()
-            return '200', '取消成功', 'none'
-        else:
-            return '207', '取消失败', 'none'
+        return '205', '您已装备该道具', 'none'
+        # is_replacement = req['cancle']
+        # if is_replacement == 'yes':
+        #     goods.status = '0'
+        #     goods.save()
+        #     return '200', '取消成功', 'none'
+        # else:
+        #     return '207', '取消失败', 'none'
 
 
 #游戏过程中获取已装备道具
