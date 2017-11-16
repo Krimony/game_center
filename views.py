@@ -224,14 +224,11 @@ def points(request, profile):
 @login_required
 def get_comd(request, profile):
     #import pdb;pdb.set_trace()
-    cate_id = request.GET.get('id')
-    list_id = [_.id for _ in Category.objects.all()]
+    cate_name = request.GET.get('name')
+    #list_name = [_.name for _ in Category.objects.all()]
     player_obj = player.objects.get(user=profile, game_id='2')
-    if int(cate_id) not in list_id:
-        return HttpResponse(
-            jsonMsg('404', '无该类别'), content_type = 'application/json'
-        )
-    if  cate_id < '4':
+    if  cate_name == 'avatar_frame':
+        cate_id = Category.objects.get(name = cate_name).id
         comds = Commodity.objects.filter(category_id = cate_id).order_by('id')
         cate_obj = Category.objects.get(id = cate_id)
         comds_info = []
@@ -244,18 +241,77 @@ def get_comd(request, profile):
             }
             comds_info.append(content)
         return '200', '查询成功', {'comds_info':comds_info, 'expire':cate_obj.expire, 'vr':player_obj.point}
-    else:
-        comds = Purchased.objects.filter(user=profile).order_by('id')
+    elif cate_name == 'avatar_shop':
+        cate_id = Category.objects.get(name = cate_name).id
+        comds = Commodity.objects.filter(category_id = cate_id).order_by('id')
+        cate_obj = Category.objects.get(id = cate_id)
         comds_info = []
         comd = [i for i in comds]
         for i in range(len(comd)):
             content = {
-                'expire' : comd[i].comd_expire,
-                'type' : comd[i].comd_img_type,
-                'name' : comd[i].comd_name,
-                'status' : comd[i].status
+                'name' : comd[i].name,
+                'price' : comd[i].price,
+                'type' : comd[i].img_type
             }
             comds_info.append(content)
+        return '200', '查询成功', {'comds_info':comds_info, 'expire':cate_obj.expire, 'vr':player_obj.point}
+    elif cate_name == 'theme':
+        comds_info = []
+        cate_obj = Category.objects.get(id = '3')
+        tables = Commodity.objects.filter(category_id='3').order_by('id')
+        cards = Commodity.objects.filter(category_id='5').order_by('id')
+        table = [i for i in tables]
+        card = [i for i in cards]
+        for i in range(len(table)):
+            content = {
+                'name': table[i].name,
+                'price': table[i].price,
+                'type': table[i].img_type
+            }
+            comds_info.append(content)
+        for i in range(len(card)):
+            content = {
+                'name': card[i].name,
+                'price': card[i].price,
+                'type': card[i].img_type
+            }
+            comds_info.append(content)
+        return '200', '查询成功', {'comds_info':comds_info, 'expire':cate_obj.expire, 'vr':player_obj.point}
+    else:
+        #import pdb;pdb.set_trace()
+        comds = Purchased.objects.filter(user=profile).order_by('id')
+        comds_info = []
+        comd = [i for i in comds]
+        #获取已购买商品信息
+        for i in range(len(comd)):
+            print(comd[i].comd_name)
+            phd_time  = utc2local(comd[i].purchase_time)
+            phd_time = phd_time.replace(tzinfo=None)
+            print(phd_time)
+            nowtime = datetime.now()
+            print(nowtime)
+            #判断道具是否过期，过期就不返回给用户
+            expire_minus = comd[i].comd_expire - (nowtime - phd_time).days
+            print((nowtime - phd_time).days)
+            print(expire_minus)
+            if expire_minus == 0:
+                remain_time = '小于一天'
+                content = {
+                    'name': comd[i].comd_name,
+                    'status': comd[i].status,
+                    'expire': remain_time
+                }
+                comds_info.append(content)
+            elif expire_minus > 0:
+                remain_time = expire_minus
+                content = {
+                    'name': comd[i].comd_name,
+                    'status': comd[i].status,
+                    'expire': remain_time
+                }
+                comds_info.append(content)
+            else:
+                pass
         return '200', '查询成功', {'comds_info':comds_info, 'vr':player_obj.point}
 
 #购买商品
@@ -297,11 +353,26 @@ def pay_comd(request, profile):
         else:
             player_obj.point = float(player_obj.point) - shop.price
             player_obj.save()
-            #更新有效期
-            purchased = Purchased.objects.get(user=profile, comd_name = comd_data)
-            purchased.comd_expire = purchased.comd_expire + shop.expire
-            purchased.save()
-        return '202', '已重复购买', {'剩余积分': player_obj.point}
+            #判断道具是否过期，根据过期时间更新有效期
+            purchased = Purchased.objects.get(user=profile, comd_name=comd_data)
+            phd_time  = utc2local(purchased.purchase_time)
+            phd_time = phd_time.replace(tzinfo=None)
+            print(phd_time)
+            nowtime = datetime.now()
+            print(nowtime)
+            expire_minus = purchased.comd_expire - (nowtime - phd_time).days
+            print((nowtime - phd_time).days)
+            print(expire_minus)
+            #道具还未过期，购买时间不变，有效期更新为商品已有的有效期加上商品有效期π
+            if expire_minus >= 0:
+                purchased.comd_expire = purchased.comd_expire + shop.expire
+                purchased.save()
+            #道具已过期，购买时间从当前开始，有效期更新为商品有效期
+            else:
+                purchased.purchase_time = nowtime
+                purchased.comd_expire = shop.expire
+                purchased.save()
+        return '202', '购买成功', {'剩余积分': player_obj.point}
 
 
 
@@ -311,7 +382,7 @@ def pay_comd(request, profile):
 def use_comd(request, profile):
     req = json.loads(request.body.decode())
     #import pdb;pdb.set_trace()
-    player_obj = player.objects.get(user=profile, game_id='2')
+    #player_obj = player.objects.get(user=profile, game_id='2')
     goods_name = req['name']
     try:
         goods = Purchased.objects.get(user=profile, comd_name = goods_name)
@@ -319,26 +390,51 @@ def use_comd(request, profile):
         return '404', '您未购买该商品', 'none'
     if goods.status == '0':
         comds_list = [_.category for _ in Purchased.objects.filter(user=profile, status='1')]
+        #using_comd_list = [_.category for _ in Used_comd.objects.filter(user=profile)]
         if goods.category in comds_list:
             comd = Purchased.objects.get(user=profile, category = goods.category, status='1')
             comd.status = '0'
             goods.status = '1'
             goods.save()
             comd.save()
+            #if goods.category in using_comd_list:
+            Used_comd.objects.get(user=profile, category_id=goods.category).delete()
+            using_comd = Used_comd.objects.create(
+                comd_name = goods.comd_name+'_game',
+                category = goods.category,
+                user = profile
+            )
+            using_comd.save()
+            # else:
+            #     using_comd = Used_comd.objects.create(
+            #         comd_name=goods.comd_name + '_game',
+            #         category=goods.category,
+            #         user=profile
+            #     )
+            #     using_comd.save()
             return '200', '更换成功', 'none'
         else:
             goods.status = '1'
             goods.save()
+            #if goods.category in using_comd_list:
+            #del_using_comd = Used_comd.objects.get(user=profile, category_id=goods.category).delete()
+            using_comd = Used_comd.objects.create(
+                comd_name = goods.comd_name+'_game',
+                category = goods.category,
+                user = profile
+            )
+            using_comd.save()
+            # else:
+            #     using_comd = Used_comd.objects.create(
+            #         comd_name=goods.comd_name + '_game',
+            #         category=goods.category,
+            #         user=profile
+            #     )
+            #     using_comd.save()
             return '200', '装备成功', 'none'
     else:
         return '205', '您已装备该道具', 'none'
-        # is_replacement = req['cancle']
-        # if is_replacement == 'yes':
-        #     goods.status = '0'
-        #     goods.save()
-        #     return '200', '取消成功', 'none'
-        # else:
-        #     return '207', '取消失败', 'none'
+
 
 
 #游戏过程中获取已装备道具
@@ -346,6 +442,7 @@ def use_comd(request, profile):
 @login_required
 def get_used_comd(request, profile):
     #import pdb;pdb.set_trace()
+
     req = json.loads(request.body.decode())
     print(req)
     #import pdb;pdb.set_trace()
@@ -353,6 +450,9 @@ def get_used_comd(request, profile):
     # identities = [_ for _ in identity_list]
     #接收用户的identity，没有就传'none'
     identity = req['identity']
+    #ip = request.META['REMOTE_ADDR']
+    #print(ip)
+
     id1 = req['identity1']
     id2 = req['identity2']
     id3 = req['identity3']
@@ -360,6 +460,14 @@ def get_used_comd(request, profile):
     id5 = req['identity5']
     id6 = req['identity6']
     id7 = req['identity7']
+    num1 = req['player_no1']
+    num2 = req['player_no2']
+    num3 = req['player_no3']
+    num4 = req['player_no4']
+    num5 = req['player_no5']
+    num6 = req['player_no6']
+    num7 = req['player_no7']
+    nums = [num1,num2, num3, num4, num5, num6, num7]
     identities = [id1, id2, id3, id4, id5, id6, id7]
     all_info = []
     for id_num in identities:
@@ -368,35 +476,47 @@ def get_used_comd(request, profile):
         else:
             mobile = connect.IdentityRedis.get(id_num)
             current_profile = RealName.objects.get(mobile=mobile)
+            local_mobile = connect.IdentityRedis.get(identity)
+            local_profile = RealName.objects.get(mobile=local_mobile)
             #print(current_profile.user_id)
             #all_info = []
-            #查找已经装备的头像
+            #查找所有玩家已经装备的头像
             try:
-                avatar_obj = Purchased.objects.get(user_id=current_profile.user_id, category_id='2', status='1')
+                avatar_obj = Used_comd.objects.get(user_id=current_profile.user_id, category_id='2')
             except:
                 avatar_name = 'none'
             else:
                 avatar_name = avatar_obj.comd_name
-            #查找已装备的头像框
+            #查找所有玩家已装备的头像框
             try:
-                frame_obj = Purchased.objects.get(user_id=current_profile.user_id, category_id='1', status='1')
+                frame_obj = Used_comd.objects.get(user_id=current_profile.user_id, category_id='1')
             except:
                 frame_name = 'none'
             else:
                 frame_name = frame_obj.comd_name
-            #查找已装备桌面
+            #查找当前用户已装备的桌面
             try:
-                table_obj = Purchased.objects.get(user_id=current_profile.user_id, category_id='3', status='1')
+                table_obj = Used_comd.objects.get(user_id=local_profile.user_id, category_id='3')
             except:
                 table_name = 'none'
             else:
                 table_name = table_obj.comd_name
+            #查找所有玩家已装备的扑克主题
+            try:
+                card_obj = Used_comd.objects.get(user_id=current_profile.user_id, category_id='5')
+            except:
+                card_name = 'none'
+            else:
+                card_name = card_obj.comd_name
             #判断是否是当前用户
             if id_num == identity:
                 is_self = 'true'
             else:
                 is_self = 'false'
-            #position = identities.index(identity)
-            all_comd = {'avatar': avatar_name, 'frame': frame_name, 'table': table_name, 'is_self': is_self}
+            id_position = identities.index(id_num)
+            print(id_position)
+            position = nums[id_position]
+            all_comd = {'identity':id_num, 'position':position, 'avatar': avatar_name, 'frame': frame_name, 'card': card_name, 'table': table_name, 'is_self': is_self}
             all_info.append(all_comd)
     return '200', '查询成功', all_info
+
