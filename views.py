@@ -206,25 +206,23 @@ def points(request, profile):
     else:
         pass
 
-
 # --------------------------游戏道具商城------------
-#用户操作
-# @login_required
-# def operate(request, profile):
-#     if request.method == 'GET':
-#         return get_comd(request, profile)
-#     elif request.method == 'POST':
-#         return pay_comd(request, profile)
-#     elif request.method == 'PUT':
-#         return use_comd(request, profile)
-#     else:
-#         return '400', '请求错误', 'none'
-#得到商品信息
-@check_method('GET')
+#用户操作对道具的操作
 @login_required
+def commodity(request, profile):
+    if request.method == 'GET':
+        return get_comd(request, profile)
+    elif request.method == 'POST':
+        return pay_comd(request, profile)
+    elif request.method == 'PUT':
+        return use_comd(request, profile)
+    else:
+        return '400', '请求错误', 'none'
+#得到商品信息
 def get_comd(request, profile):
     #import pdb;pdb.set_trace()
     cate_name = request.GET.get('name')
+    print(cate_name)
     #list_name = [_.name for _ in Category.objects.all()]
     player_obj = player.objects.get(user=profile, game_id='2')
     if  cate_name == 'avatar_frame':
@@ -315,11 +313,11 @@ def get_comd(request, profile):
         return '200', '查询成功', {'comds_info':comds_info, 'vr':player_obj.point}
 
 #购买商品
-@check_method('POST')
-@login_required
 def pay_comd(request, profile):
+    #import pdb;pdb.set_trace()
     req = json.loads(request.body.decode())
     comd_data = req['name']
+    print(comd_data)
     player_obj = player.objects.get(user=profile, game_id='2')
     #import pdb;pdb.set_trace()
     try:
@@ -372,13 +370,10 @@ def pay_comd(request, profile):
                 purchased.purchase_time = nowtime
                 purchased.comd_expire = shop.expire
                 purchased.save()
-        return '202', '购买成功', {'剩余积分': player_obj.point}
-
-
+        return '200', '购买成功', {'剩余积分': player_obj.point}
 
 #装备道具
-@check_method('PUT')
-@login_required
+
 def use_comd(request, profile):
     req = json.loads(request.body.decode())
     #import pdb;pdb.set_trace()
@@ -424,18 +419,9 @@ def use_comd(request, profile):
                 user = profile
             )
             using_comd.save()
-            # else:
-            #     using_comd = Used_comd.objects.create(
-            #         comd_name=goods.comd_name + '_game',
-            #         category=goods.category,
-            #         user=profile
-            #     )
-            #     using_comd.save()
             return '200', '装备成功', 'none'
     else:
         return '205', '您已装备该道具', 'none'
-
-
 
 #游戏过程中获取已装备道具
 @check_method('POST')
@@ -516,6 +502,7 @@ def get_used_comd(request, profile):
             id_position = identities.index(id_num)
             print(id_position)
             position = nums[id_position]
+            print(position)
             all_comd = {'identity':id_num, 'position':position, 'avatar': avatar_name, 'frame': frame_name, 'card': card_name, 'table': table_name, 'is_self': is_self}
             all_info.append(all_comd)
     return '200', '查询成功', all_info
